@@ -5,12 +5,25 @@
 
 class Intellibr : public GenericVideoFilter {
 public:
-    Intellibr(PClip _child, IScriptEnvironment* env) :
+    Intellibr(PClip _child, AVSValue args, IScriptEnvironment* env) :
         GenericVideoFilter(_child), lastColors(96, 0), curve(256, 0) {
-        targetMin = 0; targetMax = 255; dynamicity = 10; sceneThreshold = 20; oldMin = 0; oldK = 1.0;
-        curveEnd = 26;    alpha = 50; p_mode = 1; lastP = 255;
-        curveStart = 0; beta = 50;
+        //"c[p]s[min]i[max]i[dynamicity]i[scene]i[start]i[end]i[start_angle]f[end_angle]f"
+        // 0 1   2     3     4            5        6      7      8            9
+        p_mode = 1;
+        const char* pstr = args[1].AsString("max");
+        if (_strcmpi(pstr, "max") == 0) p_mode = 0;
+        if (_strcmpi(pstr, "average") == 0) p_mode = 1;
+        if (_strcmpi(pstr, "median") == 0) p_mode = 2;
 
+        targetMin = args[2].AsInt(0);
+        targetMax = args[3].AsInt(255);
+        dynamicity = args[4].AsInt(5);
+        sceneThreshold = args[5].AsInt(20);
+        curveStart = args[6].AsInt(0);
+        curveEnd = args[7].AsInt(153);
+        alpha = args[8].AsFloat(0.14);
+        beta = args[9].AsFloat(0.02);
+        oldMin = 0; oldK = 1.0; lastP = 255;
 
         if (vi.IsRGB32())
             isRGB = true;
@@ -39,11 +52,11 @@ private:
 
     int targetMin, targetMax; //0 .. 255
     int dynamicity, sceneThreshold; // 1 .. 100
-    int    curveEnd; // 1 .. 255;
-    int alpha; // 1..250; /50
-    int p_mode; //0,1,2 - max, average, median
+    int curveEnd; // 1 .. 255;
     int curveStart;
-    int beta;
+    double alpha;
+    double beta;
+    int p_mode; //0,1,2 - max, average, median
     int lastP; // P value of last processed frame
 
     std::vector<int> lastColors, curve;
@@ -62,15 +75,12 @@ private:
         f(1) = a+b+c = 1
           => a + beta/2 - alpha/2 - 3/2a + alpha = 1
           => beta + alpha  - 2 =  a
-
         */
         for (int i = curveStart; i < curveEnd; i++) {
             double x = (double)(i - curveStart) / (curveEnd - curveStart);
-            double al = alpha / 50.0;
-            double be = beta / 50.0;
-            double c = al;
-            double a = al + be - 2;
-            double b = (be - al - 3 * a) / 2;
+            double c = alpha;
+            double a = alpha + beta - 2;
+            double b = (beta - alpha - 3 * a) / 2;
             double h = targetMax - targetMin - curveStart;
             int t = targetMin + curveStart + (a * x * x * x + b * x * x + c * x) * h;
             if (t > targetMax) t = targetMax;
@@ -376,13 +386,13 @@ private:
 };
 
 AVSValue __cdecl Create_Intellibr(AVSValue args, void* user_data, IScriptEnvironment* env) {
-    return new Intellibr(args[0].AsClip(), env);
+    return new Intellibr(args[0].AsClip(), args, env);
 }
 
 const AVS_Linkage* AVS_linkage = 0;
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, const AVS_Linkage* const vectors) {
     AVS_linkage = vectors;
-    env->AddFunction("Intellibr", "c", Create_Intellibr, 0);
+    env->AddFunction("Intellibr", "c[p]s[min]i[max]i[dynamicity]i[scene]i[start]i[end]i[start_angle]f[end_angle]f", Create_Intellibr, 0);
     return "Intelligent Brightness";
 }
